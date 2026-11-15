@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import { sanitizeHtml } from '../lib/sanitize'
 import { Briefcase, CalendarDays, Download, Eye, FileText, Inbox, Mail, MapPin, Pencil, Phone, Plus, Trash2, UserRound, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -93,7 +94,7 @@ export function ApplicationView({ appId, onClose, onChanged }) {
             <section>
               <h3 className="mb-2 text-sm font-semibold text-slate-500">Présentation</h3>
               {/* [VULN V3] XSS stockée : la bio du candidat s'exécute dans le navigateur du recruteur */}
-              <div className="rich text-sm text-slate-700" dangerouslySetInnerHTML={{ __html: c.bio }} />
+              <div className="rich text-sm text-slate-700" dangerouslySetInnerHTML={{ __html: sanitizeHtml(c.bio) }} /> {/* nosemgrep: contenu assaini par sanitizeHtml (anti-XSS) */}
             </section>
           )}
           {a.cover_letter && (

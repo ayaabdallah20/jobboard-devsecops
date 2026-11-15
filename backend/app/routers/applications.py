@@ -46,7 +46,11 @@ def apply(data: ApplicationIn, current: CurrentUser = Depends(require_roles("can
     exists = db.query(models.Application).filter_by(job_id=job.id, candidate_id=current.id).first()
     if exists:
         raise HTTPException(400, "Vous avez déjà postulé à cette offre")
-    # [VULN V2] cv_id pas vérifié : on peut joindre le CV d'un autre
+    # [CORRECTIF V2] Le CV joint doit appartenir au candidat connecté.
+    if data.cv_id is not None:
+        cv = db.get(models.CV, data.cv_id)
+        if not cv or cv.owner_id != current.id:
+            raise HTTPException(403, "Ce CV ne vous appartient pas")
     app = models.Application(job_id=job.id, candidate_id=current.id, cv_id=data.cv_id, cover_letter=data.cover_letter)
     db.add(app)
     db.commit()
@@ -73,30 +77,44 @@ def received(current: CurrentUser = Depends(require_roles("recruteur", "admin"))
     return [serialize(a) for a in q.order_by(models.Application.created_at.desc()).all()]
 
 
+def _owns_job(a: models.Application, current: CurrentUser) -> bool:
+    return current.role == "admin" or (a.job and a.job.recruiter_id == current.id)
+
+
 @router.get("/job/{job_id}")
 def by_job(job_id: int, current: CurrentUser = Depends(require_roles("recruteur", "admin")), db: Session = Depends(get_db)):
-    # [VULN V2] on ne vérifie pas que l'offre est au recruteur connecté
+    job = db.get(models.Job, job_id)
+    if not job:
+        raise HTTPException(404, "Offre introuvable")
+    # [CORRECTIF V2] Le recruteur ne voit que les candidatures de SES offres.
+    if job.recruiter_id != current.id and current.role != "admin":
+        raise HTTPException(403, "Accès refusé à cette offre")
     apps = db.query(models.Application).filter(models.Application.job_id == job_id).all()
     return [serialize(a, full=True) for a in apps]
 
 
 @router.get("/{app_id}")
 def get_application(app_id: int, current: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
-    # [VULN V2] IDOR : on peut lire n'importe quelle candidature en changeant l'id
     a = db.get(models.Application, app_id)
     if not a:
         raise HTTPException(404, "Candidature introuvable")
+    # [CORRECTIF V2] Accès réservé au candidat auteur ou au recruteur de l'offre.
+    if a.candidate_id != current.id and not _owns_job(a, current):
+        raise HTTPException(403, "Accès refusé à cette candidature")
     return serialize(a, full=True)
 
 
 @router.patch("/{app_id}/status")
-def set_status(app_id: int, data: StatusIn, current: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
-    # [VULN V2] pas de contrôle de rôle : un candidat peut s'auto-accepter
+def set_status(app_id: int, data: StatusIn, current: CurrentUser = Depends(require_roles("recruteur", "admin")), db: Session = Depends(get_db)):
+    # [CORRECTIF V2] Seul le recruteur propriétaire de l'offre (ou un admin)
+    # peut changer le statut : un candidat ne peut plus s'auto-accepter.
     if data.status not in STATUSES:
         raise HTTPException(400, "Statut invalide")
     a = db.get(models.Application, app_id)
     if not a:
         raise HTTPException(404, "Candidature introuvable")
+    if not _owns_job(a, current):
+        raise HTTPException(403, "Accès refusé à cette candidature")
     a.status = data.status
     db.commit()
     db.refresh(a)

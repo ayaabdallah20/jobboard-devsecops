@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from .. import models
 from ..database import get_db
+from ..sanitize import clean_html
 from ..schemas import JobIn, JobOut, StatusIn
 from ..security import CurrentUser, require_roles
 
@@ -41,33 +42,21 @@ def list_jobs(db: Session = Depends(get_db)):
 
 @router.get("/search")
 def search_jobs(q: str = "", location: str = "", contract: str = "", db: Session = Depends(get_db)):
-    # [VULN V1] injection SQL : les paramètres sont concaténés dans la requête
-    # preuve : /api/jobs/search?q=' OR '1'='1
-    sql = (
-        "SELECT id, title, company, location, contract_type, salary, remote, "
-        "description, created_at FROM jobs "
-        f"WHERE status = 'published' AND (title ILIKE '%{q}%' OR company ILIKE '%{q}%')"
-    )
+    # [CORRECTIF V1] Requête paramétrée via l'ORM : les entrées utilisateur sont
+    # transmises comme valeurs liées, jamais concaténées dans le SQL.
+    # Un '%' ou une apostrophe n'est plus interprété comme du code.
+    query = db.query(models.Job).filter(models.Job.status == "published")
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(models.Job.title.ilike(like), models.Job.company.ilike(like)))
     if location:
-        sql += f" AND location ILIKE '%{location}%'"
+        query = query.filter(models.Job.location.ilike(f"%{location}%"))
     if contract:
-        sql += f" AND contract_type = '{contract}'"
-    sql += " ORDER BY created_at DESC"
-
-    raw = db.connection().connection  # connexion brute
-    cur = raw.cursor()
-    try:
-        cur.execute(sql)
-        cols = [c[0] for c in cur.description]
-        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-    except Exception:
-        raw.rollback()
-        raise  # [VULN V6] erreur SQL renvoyée au client
-    finally:
-        cur.close()
-    for r in rows:
-        r["created_at"] = str(r.get("created_at"))
-    return {"query": sql, "count": len(rows), "results": rows}  # [VULN V6] requête SQL exposée
+        query = query.filter(models.Job.contract_type == contract)
+    jobs = query.order_by(models.Job.created_at.desc()).all()
+    results = _with_count(db, jobs)
+    # [CORRECTIF V6] On n'expose plus la requête SQL interne.
+    return {"count": len(results), "results": results}
 
 
 @router.get("/meta/contracts")
@@ -98,8 +87,11 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 
 @router.post("", status_code=201)
 def create_job(data: JobIn, current: CurrentUser = Depends(require_roles("recruteur", "admin")), db: Session = Depends(get_db)):
-    # [VULN V3] description/requirements stockées avec leur HTML brut
-    job = models.Job(**data.model_dump(), recruiter_id=current.id)
+    # [CORRECTIF V3] description/requirements assainies (anti-XSS stocké)
+    payload = data.model_dump()
+    payload["description"] = clean_html(payload.get("description"))
+    payload["requirements"] = clean_html(payload.get("requirements"))
+    job = models.Job(**payload, recruiter_id=current.id)
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -113,7 +105,11 @@ def update_job(job_id: int, data: JobIn, current: CurrentUser = Depends(require_
         raise HTTPException(404, "Offre introuvable")
     if job.recruiter_id != current.id and current.role != "admin":
         raise HTTPException(403, "Vous ne pouvez modifier que vos propres offres")
-    for k, v in data.model_dump().items():
+    payload = data.model_dump()
+    # [CORRECTIF V3] on assainit le HTML à chaque mise à jour
+    payload["description"] = clean_html(payload.get("description"))
+    payload["requirements"] = clean_html(payload.get("requirements"))
+    for k, v in payload.items():
         setattr(job, k, v)
     db.commit()
     db.refresh(job)

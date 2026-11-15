@@ -1,18 +1,18 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class RegisterIn(BaseModel):
-    email: str  # [VULN V5] format non validé
-    password: str  # [VULN V5] aucune politique de mot de passe
+    email: EmailStr  # [CORRECTIF V5] format d'e-mail validé
+    password: str  # [CORRECTIF V5] politique vérifiée côté serveur (validate_password)
     full_name: str
-    role: str = "candidat"  # [VULN V5] rôle choisi par le client (y compris "admin")
+    # [CORRECTIF V5] plus de champ "role" : le serveur force "candidat".
     company: str | None = None
 
 
 class LoginIn(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 
@@ -42,7 +42,7 @@ class ProfileIn(BaseModel):
     city: str | None = None
     birth_date: date | None = None
     headline: str | None = None
-    bio: str | None = None  # [VULN V3] HTML accepté et stocké tel quel
+    bio: str | None = None  # [CORRECTIF V3] assaini côté serveur (clean_html)
     skills: str | None = None
     company: str | None = None
 
@@ -54,7 +54,7 @@ class JobIn(BaseModel):
     contract_type: str = "CDI"
     salary: str | None = None
     remote: str = "Sur site"
-    description: str  # [VULN V3] HTML accepté et stocké tel quel
+    description: str  # [CORRECTIF V3] assaini côté serveur (clean_html)
     requirements: str | None = None
     status: str = "draft"
 

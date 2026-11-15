@@ -1,14 +1,12 @@
-# JobBoard Secure - API (version vulnérable, labo)
+# JobBoard Secure - API (version corrigée, sécurisée)
 # Aya Abdallah & Ameni Azouz - TEK-UP 2026-2027
 import logging
 import os
 import time
-import traceback
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
@@ -23,50 +21,53 @@ log = logging.getLogger("jobboard")
 app = FastAPI(
     title=config.APP_NAME,
     version=config.APP_VERSION,
-    description="Portail de recrutement — version vulnérable de laboratoire",
+    description="Portail de recrutement — version sécurisée",
 )
 
-# [VULN V6] CORS permissif
+# [CORRECTIF V6] CORS restreint aux origines déclarées, méthodes/en-têtes limités.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
 @app.middleware("http")
-async def access_log(request: Request, call_next):
+async def security_headers(request: Request, call_next):
     start = time.time()
     response = await call_next(request)
-    # [VULN V6] on journalise toute la query-string
-    log.info("%s %s?%s -> %s (%.0f ms) ip=%s", request.method, request.url.path, request.url.query,
-             response.status_code, (time.time() - start) * 1000, request.client.host if request.client else "-")
-    # [VULN V6] aucun en-tête de sécurité
-    response.headers["X-Powered-By"] = "FastAPI/Python"  # divulgation de la stack
+    # [CORRECTIF V6] Journaux sans query-string ni donnée sensible.
+    log.info("%s %s -> %s (%.0f ms)", request.method, request.url.path,
+             response.status_code, (time.time() - start) * 1000)
+    # [CORRECTIF V6] En-têtes de sécurité (répond aussi aux alertes ZAP).
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    # [CORRECTIF V6] On ne divulgue plus la stack technique.
+    response.headers["X-Powered-By"] = ""
+    del response.headers["X-Powered-By"]
     return response
 
 
 @app.exception_handler(Exception)
-async def debug_errors(request: Request, exc: Exception):
-    # [VULN V6] traces complètes renvoyées au client
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": type(exc).__name__,
-            "detail": str(exc),
-            "traceback": traceback.format_exc().splitlines() if config.DEBUG else None,
-        },
-    )
+async def generic_errors(request: Request, exc: Exception):
+    # [CORRECTIF V6] Erreur générique : aucune trace ni détail interne renvoyé.
+    log.error("Erreur interne sur %s %s : %s", request.method, request.url.path, type(exc).__name__)
+    return JSONResponse(status_code=500, content={"detail": "Erreur interne du serveur"})
 
 
 for r in (auth.router, users.router, jobs.router, applications.router, cvs.router, admin.router):
     app.include_router(r)
 
 os.makedirs(config.UPLOAD_DIR, exist_ok=True)
-# [VULN V4] CV servis publiquement, sans auth
-app.mount("/uploads", StaticFiles(directory=config.UPLOAD_DIR), name="uploads")
+# [CORRECTIF V4] Plus de montage public des CV : ils ne sont servis que par
+# /api/cvs/{id}/download, après authentification et contrôle d'accès.
 
 
 @app.get("/api/health", tags=["Santé"])

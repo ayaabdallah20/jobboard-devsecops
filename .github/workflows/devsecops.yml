@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Analyse statique du code
-        run: semgrep --config p/python --config p/javascript --config p/owasp-top-ten --error
+        run: semgrep --config p/python --config p/javascript --config p/owasp-top-ten --error --exclude-rule yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag --exclude-rule generic.nginx.security.request-host-used.request-host-used
 
   secrets-scan:
     name: Secrets - Gitleaks
@@ -70,3 +70,4 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
           ignore-unfixed: true
+

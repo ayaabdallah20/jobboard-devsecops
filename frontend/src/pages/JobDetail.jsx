@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { sanitizeHtml } from '../lib/sanitize'
 import { ArrowLeft, Briefcase, Building2, CalendarDays, CheckCircle2, FileText, MapPin, Upload, Users, Wallet } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -114,12 +115,12 @@ export default function JobDetail() {
 
           <h2 className="mb-3 mt-8 text-lg font-semibold">Description du poste</h2>
           {/* [VULN V3] XSS stockée : le HTML de la description est injecté tel quel dans la page */}
-          <div className="rich text-slate-700" dangerouslySetInnerHTML={{ __html: job.description }} />
+          <div className="rich text-slate-700" dangerouslySetInnerHTML={{ __html: sanitizeHtml(job.description) }} /> {/* nosemgrep: contenu assaini par sanitizeHtml (anti-XSS) */}
 
           {job.requirements && (
             <>
               <h2 className="mb-3 mt-6 text-lg font-semibold">Profil recherché</h2>
-              <div className="rich text-slate-700" dangerouslySetInnerHTML={{ __html: job.requirements }} />
+              <div className="rich text-slate-700" dangerouslySetInnerHTML={{ __html: sanitizeHtml(job.requirements) }} /> {/* nosemgrep: contenu assaini par sanitizeHtml (anti-XSS) */}
             </>
           )}
         </article>
