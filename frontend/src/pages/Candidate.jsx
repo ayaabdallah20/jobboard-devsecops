@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import { sanitizeHtml } from '../lib/sanitize'
 import { Briefcase, CheckCircle2, Download, FileText, Inbox, Save, Trash2, Upload, UserRound, XCircle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -171,7 +172,7 @@ export function ProfileForm({ recruiter = false }) {
         <p className="font-display text-lg font-semibold">{f.full_name}</p>
         <p className="text-sm text-royal">{f.headline}</p>
         {/* [VULN V3] aperçu rendu sans assainissement */}
-        <div className="rich mt-4 text-sm text-slate-700" dangerouslySetInnerHTML={{ __html: f.bio }} />
+        <div className="rich mt-4 text-sm text-slate-700" dangerouslySetInnerHTML={{ __html: sanitizeHtml(f.bio) }} /> {/* nosemgrep: contenu assaini par sanitizeHtml (anti-XSS) */}
         {f.skills && <div className="mt-4 flex flex-wrap gap-1.5">{f.skills.split(',').filter(Boolean).map((s) => <span key={s} className="rounded-md bg-royal/[.07] px-2 py-0.5 text-xs text-royal">{s.trim()}</span>)}</div>}
       </aside>
     </form>

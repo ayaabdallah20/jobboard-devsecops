@@ -1,12 +1,8 @@
-import os
-import platform
-import sys
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from .. import config, models
+from .. import models
 from ..database import get_db
 from ..schemas import AdminUserPatch, UserOut
 from ..security import CurrentUser, require_roles
@@ -50,20 +46,5 @@ def stats(current: CurrentUser = Depends(require_roles("admin")), db: Session = 
         "cvs": db.query(models.CV).count(),
     }
 
-
-@router.get("/api/debug/config", tags=["Debug"])
-def debug_config():
-    # [VULN V6] endpoint de debug oublié, sans auth, expose la config
-    return {
-        "app": config.APP_NAME,
-        "version": config.APP_VERSION,
-        "debug": config.DEBUG,
-        "database_url": config.DATABASE_URL,
-        "jwt_secret": config.JWT_SECRET,
-        "jwt_algorithm": config.JWT_ALGORITHM,
-        "smtp_api_key": config.SMTP_API_KEY,
-        "upload_dir": config.UPLOAD_DIR,
-        "python": sys.version,
-        "platform": platform.platform(),
-        "env": {k: v for k, v in os.environ.items() if k.startswith(("DATABASE", "JWT", "POSTGRES", "APP"))},
-    }
+# [CORRECTIF V6] L'endpoint /api/debug/config (qui exposait secrets et config)
+# a été entièrement supprimé.

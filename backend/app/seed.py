@@ -115,7 +115,7 @@ def seed():
             ])
             with open(os.path.join(UPLOAD_DIR, fname), "wb") as f:
                 f.write(content)
-            cv = models.CV(owner_id=u.id, original_filename=fname, stored_path=f"/uploads/{fname}",
+            cv = models.CV(owner_id=u.id, original_filename=fname, stored_path=fname,
                            content_type="application/pdf", size=len(content))
             db.add(cv)
             cvs[u.id] = cv
