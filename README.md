@@ -257,20 +257,6 @@ docs/                             # THREAT_MODEL, BLOCKING_POLICY, SECRETS_MANAG
                                   # INCIDENT_RESPONSE, INNOVATION_FALCO
 ```
 
-### 6.2 Correspondance avec le cahier des charges
-| Exigence | Livrable |
-|---|---|
-| §4.1 Conteneur durci | `backend/Dockerfile`, `frontend/Dockerfile` (multi-étapes, non-root, `.dockerignore`) |
-| §4.2 Modèle de menace | `docs/THREAT_MODEL.md` (STRIDE + OWASP, avant/après) |
-| §4.3 Pipeline bloquant | `.github/workflows/devsecops.yml`, `docs/BLOCKING_POLICY.md` |
-| §4.4 Gestion des secrets | `.env.example`, `k8s/secret.example.yaml`, `docs/SECRETS_MANAGEMENT.md` |
-| §4.5 Kubernetes durci | `k8s/` (securityContext, NetworkPolicy refus par défaut) |
-| §4.6 DAST | étape ZAP du pipeline (+ exécution manuelle dans la VM) |
-| §4.7 Observabilité / réponse | `attack/simulate_attack.sh`, `docs/INCIDENT_RESPONSE.md` |
-| Bonus innovant | `k8s/falco/`, `docs/INNOVATION_FALCO.md` (détection runtime) |
-
-### 6.3 
-
 **a) Test conteneurisé rapide (Docker Compose)**
 ```bash
 cp .env.example .env
