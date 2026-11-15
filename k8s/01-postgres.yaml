@@ -1,0 +1,78 @@
+# ============================================================================
+#  PostgreSQL — base de données (§4.5)
+#  Le schéma SQL est injecté via ConfigMap et appliqué au premier démarrage.
+# ============================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: jobboard
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: jobboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999          # utilisateur "postgres" de l'image officielle
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: jobboard
+            - name: POSTGRES_DB
+              value: jobboard
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: jobboard-secrets, key: POSTGRES_PASSWORD }
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "jobboard"] }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: postgres-pvc }
+        - name: initdb
+          configMap: { name: postgres-initdb }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: jobboard
+spec:
+  selector: { app: postgres }
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None

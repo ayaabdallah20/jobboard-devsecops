@@ -1,0 +1,106 @@
+# NetworkPolicies - refus par défaut puis flux autorisés (§4.5)
+# internet -> frontend -> backend -> postgres (+ DNS)
+
+# 1) Refus par défaut de tout le trafic entrant ET sortant dans le namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: jobboard
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# 2) Autoriser la résolution DNS (nécessaire à tous les pods)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: jobboard
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# 3) Frontend : accessible depuis l'extérieur (port 8080)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-ingress
+  namespace: jobboard
+spec:
+  podSelector:
+    matchLabels: { app: frontend }
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 8080 }
+---
+# 4) Frontend -> Backend (8000)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-backend
+  namespace: jobboard
+spec:
+  podSelector:
+    matchLabels: { app: frontend }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app: backend } }
+      ports:
+        - { protocol: TCP, port: 8000 }
+---
+# 5) Backend : reçoit du frontend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-ingress
+  namespace: jobboard
+spec:
+  podSelector:
+    matchLabels: { app: backend }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: frontend } }
+      ports:
+        - { protocol: TCP, port: 8000 }
+---
+# 6) Backend -> PostgreSQL (5432)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-postgres
+  namespace: jobboard
+spec:
+  podSelector:
+    matchLabels: { app: backend }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app: postgres } }
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+# 7) PostgreSQL : reçoit du backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-ingress
+  namespace: jobboard
+spec:
+  podSelector:
+    matchLabels: { app: postgres }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: backend } }
+      ports:
+        - { protocol: TCP, port: 5432 }

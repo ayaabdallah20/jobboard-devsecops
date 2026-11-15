@@ -1,0 +1,18 @@
+# Dépendances
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+
+# Fichiers générés
+backend/uploads/*.pdf
+
+# Secrets / environnement (JAMAIS versionnés) — §4.4
+.env
+backend/.env
+k8s/secret.yaml
+
+# Divers
+.DS_Store
+*.log

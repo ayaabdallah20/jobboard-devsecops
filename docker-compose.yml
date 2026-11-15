@@ -1,0 +1,47 @@
+# Orchestration locale (test avant Kubernetes)
+# Secrets passés par variables d'env (.env), pas en dur.
+services:
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jobboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobboard123}
+      POSTGRES_DB: ${POSTGRES_DB:-jobboard}
+    volumes:
+      # Le schéma est appliqué automatiquement au premier démarrage de la base
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobboard}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [internal]
+
+  backend:
+    build: ./backend
+    image: jobboard-backend:latest
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jobboard}:${POSTGRES_PASSWORD:-jobboard123}@db:5432/${POSTGRES_DB:-jobboard}
+      JWT_SECRET: ${JWT_SECRET:-secret123}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal]
+
+  frontend:
+    build: ./frontend
+    image: jobboard-frontend:latest
+    ports:
+      - "8080:8080"      # l'app est accessible sur http://localhost:8080
+    depends_on:
+      - backend
+    networks: [internal]
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+    driver: bridge

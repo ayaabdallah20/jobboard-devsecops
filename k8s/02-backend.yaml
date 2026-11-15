@@ -1,0 +1,74 @@
+# ============================================================================
+#  Backend FastAPI — déploiement durci (§4.5)
+#  securityContext restrictif : non-root, pas d'élévation, système de fichiers
+#  racine en lecture seule (sauf /app/uploads et /tmp).
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: jobboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: backend }
+  template:
+    metadata:
+      labels: { app: backend }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: backend
+          # Image à remplacer par celle de ton registre (ex. ghcr.io/ayaabdallah20/jobboard-backend:1.0)
+          image: jobboard-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: jobboard-secrets, key: DATABASE_URL }
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef: { name: jobboard-secrets, key: JWT_SECRET }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet: { path: /api/health, port: 8000 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: 8000 }
+            initialDelaySeconds: 25
+            periodSeconds: 20
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+      volumes:
+        - name: uploads
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: jobboard
+spec:
+  selector: { app: backend }
+  ports:
+    - port: 8000
+      targetPort: 8000

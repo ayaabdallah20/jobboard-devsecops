@@ -1,0 +1,50 @@
+# ============================================================================
+#  Règles Falco personnalisées — détection de menaces À L'EXÉCUTION (runtime)
+#  Élément innovant : complète les scans STATIQUES (Semgrep/Trivy) par une
+#  surveillance DYNAMIQUE du comportement des conteneurs (technologie eBPF).
+#
+#  Déploiement (dans la VM) — voir docs/INNOVATION_FALCO.md :
+#    helm repo add falcosecurity https://falcosecurity.github.io/charts
+#    helm install falco falcosecurity/falco -n falco --create-namespace \
+#      --set-file customRules."jobboard\.yaml"=k8s/falco/falco-rules.yaml
+# ============================================================================
+
+# 1) Un shell est ouvert DANS un conteneur de l'application (signe d'intrusion)
+- rule: Shell ouvert dans un conteneur JobBoard
+  desc: Détecte l'exécution d'un shell interactif dans les pods de l'application
+  condition: >
+    spawned_process and container
+    and shell_procs
+    and container.image.repository contains "jobboard"
+  output: >
+    Shell ouvert dans un conteneur JobBoard
+    (user=%user.name commande=%proc.cmdline conteneur=%container.name image=%container.image.repository)
+  priority: WARNING
+  tags: [container, shell, mitre_execution]
+
+# 2) Lecture d'un fichier sensible (ex. tentative de lecture de /etc/shadow)
+- rule: Lecture de fichier sensible dans un conteneur JobBoard
+  desc: Détecte l'accès à des fichiers sensibles du système
+  condition: >
+    open_read and container
+    and container.image.repository contains "jobboard"
+    and (fd.name startswith /etc/shadow or fd.name startswith /etc/passwd)
+  output: >
+    Lecture d'un fichier sensible dans un conteneur JobBoard
+    (fichier=%fd.name user=%user.name conteneur=%container.name)
+  priority: ERROR
+  tags: [filesystem, mitre_credential_access]
+
+# 3) Connexion sortante inattendue depuis le backend (exfiltration possible)
+- rule: Connexion sortante inattendue du backend JobBoard
+  desc: Le backend ne devrait parler qu'à PostgreSQL ; toute autre sortie est suspecte
+  condition: >
+    outbound and container
+    and container.image.repository contains "jobboard-backend"
+    and not fd.sport = 5432 and not fd.dport = 5432
+    and not fd.dport = 53
+  output: >
+    Connexion sortante inattendue depuis le backend
+    (destination=%fd.rip:%fd.rport conteneur=%container.name)
+  priority: WARNING
+  tags: [network, mitre_exfiltration]
